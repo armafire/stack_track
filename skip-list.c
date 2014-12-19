@@ -1,7 +1,7 @@
 
-/////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 // INCLUDES
-/////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -12,9 +12,9 @@
 #include "atomics.h"
 #include "skip-list.h"
 
-/////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 // DEFINES
-/////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 #define OP_ID_CONTAINS (0)
 #define OP_ID_INSERT (1)
 #define OP_ID_REMOVE (2)
@@ -22,9 +22,9 @@
 #define SL_TRACE(format, ...) //printf(format, __VA_ARGS__)
 #define SL_TRACE_IN_HTM(format, ...) //printf(format, __VA_ARGS__)
 
-/////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 // INTERNAL FUNCTIONS
-/////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 static void sl_node_lock_slow_path(st_thread_t *self, volatile sl_node_t *p_node) {
 	
 	while (1) {
@@ -151,7 +151,7 @@ static int sl_find_hp(st_thread_t *self,
 	st_hp_record_t *hp_curr = NULL;
 	st_hp_record_t *hp_temp = NULL;
 			
-	SL_TRACE("[%d] sl_find_slow_path: start\n", (int)self->uniq_id);
+	SL_TRACE("[%d] sl_find_hp: start\n", (int)self->uniq_id);
 		
 	hp_pred = ST_HP_alloc(self);
 	hp_curr = ST_HP_alloc(self);
@@ -193,7 +193,7 @@ static int sl_find_hp(st_thread_t *self,
 		
 	}
 		
-	SL_TRACE("[%d] sl_find_slow_path: finish\n", (int)self->uniq_id);
+	SL_TRACE("[%d] sl_find_hp: finish\n", (int)self->uniq_id);
 	return l_found;
 }
 
@@ -213,7 +213,7 @@ static int sl_find_stacktrack(st_thread_t *self,
 	st_hp_record_t *hp_curr = NULL;
 	st_hp_record_t *hp_temp = NULL;
 			
-	SL_TRACE("[%d] sl_find_mixed: start\n", (int)self->uniq_id);
+	SL_TRACE("[%d] sl_find_stacktrack: start\n", (int)self->uniq_id);
 	
 	ST_stack_add(self, &stack_start, &stack_end);
 		
@@ -263,13 +263,13 @@ static int sl_find_stacktrack(st_thread_t *self,
 	
 	ST_stack_del(self);
 		
-	SL_TRACE("[%d] sl_find_mixed: finish\n", (int)self->uniq_id);
+	SL_TRACE("[%d] sl_find_stacktrack: finish\n", (int)self->uniq_id);
 	return l_found;
 }
 
-/////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 // EXTERNAL FUNCTIONS
-/////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
 skiplist_t *skiplist_init() {
 	int i;
@@ -312,7 +312,7 @@ int skiplist_contains_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 	int lFound;
 	int ret;
 
-	SL_TRACE("[%d] skiplist_contains_slow_path: start\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_contains_hp: start\n", (int)self->uniq_id);
 
 	ST_init(self);
 	
@@ -321,7 +321,7 @@ int skiplist_contains_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
     
 	ST_finish(self);
 	
-	SL_TRACE("[%d] skiplist_contains_slow_path: finish\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_contains_hp: finish\n", (int)self->uniq_id);
 	return ret;
 }
 
@@ -335,7 +335,7 @@ int skiplist_contains_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int 
 	int ret;
 	int64_t stack_start;
 
-	SL_TRACE("[%d] skiplist_contains_mixed: start\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_contains_stacktrack: start\n", (int)self->uniq_id);
 
 	ST_init(self);
 
@@ -350,7 +350,7 @@ int skiplist_contains_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int 
 	
 	ST_finish(self);	
 	
-	SL_TRACE("[%d] skiplist_contains_mixed: finish\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_contains_stacktrack: finish\n", (int)self->uniq_id);
 	return ret;
 }
 
@@ -447,7 +447,7 @@ volatile sl_node_t *skiplist_insert_hp(st_thread_t *self, skiplist_t *p_skiplist
 	int lFound;
 	int done = 0;
 			
-	SL_TRACE("[%d] skiplist_insert_slow_path: start\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_insert_hp: start\n", (int)self->uniq_id);
 	
 	topLevel = sl_randomLevel(self->p_seed);
 	
@@ -455,11 +455,11 @@ volatile sl_node_t *skiplist_insert_hp(st_thread_t *self, skiplist_t *p_skiplist
 
 	while (!done) {
 		
-		SL_TRACE_IN_HTM("[%d] skiplist_insert_slow_path: find\n", (int)self->uniq_id);
+		SL_TRACE_IN_HTM("[%d] skiplist_insert_hp: find\n", (int)self->uniq_id);
 		
 		lFound = sl_find_hp(self, p_skiplist, key, p_preds, p_succs, hp_preds, hp_succs);
 		
-		SL_TRACE_IN_HTM("[%d] skiplist_insert_slow_path: find res=%d\n", (int)self->uniq_id, lFound);
+		SL_TRACE_IN_HTM("[%d] skiplist_insert_hp: find res=%d\n", (int)self->uniq_id, lFound);
 		
 		if (lFound != -1) {
 			p_node_found = p_succs[lFound];
@@ -487,7 +487,7 @@ volatile sl_node_t *skiplist_insert_hp(st_thread_t *self, skiplist_t *p_skiplist
 			valid = !p_pred->marked && !p_succ->marked && p_pred->p_next[level] == p_succ;
 		}
 		
-		SL_TRACE_IN_HTM("[%d] skiplist_insert_slow_path: valid=%d\n", (int)self->uniq_id, valid);
+		SL_TRACE_IN_HTM("[%d] skiplist_insert_hp: valid=%d\n", (int)self->uniq_id, valid);
 		
 		if (valid) {
 			p_new_node = sl_node_alloc();
@@ -513,7 +513,7 @@ volatile sl_node_t *skiplist_insert_hp(st_thread_t *self, skiplist_t *p_skiplist
 	
 	ST_finish(self);
 	
-	SL_TRACE("[%d] skiplist_insert_slow_path: finish\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_insert_hp: finish\n", (int)self->uniq_id);
 	return ret;
 }
 
@@ -534,7 +534,7 @@ volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_
 	int done = 0;
 	int64_t stack_start;
 			
-	SL_TRACE("[%d] skiplist_insert: start [ key = %d ]\n", (int)self->uniq_id, key);
+	SL_TRACE("[%d] skiplist_insert_stacktrack: start [ key = %d ]\n", (int)self->uniq_id, key);
 	
 	ST_init(self);
 	
@@ -547,11 +547,11 @@ volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_
 	while (!done) {
 		ST_SPLIT(self);
 		
-		SL_TRACE_IN_HTM("[%d] skiplist_insert: find\n", (int)self->uniq_id);
+		SL_TRACE_IN_HTM("[%d] skiplist_insert_stacktrack: find\n", (int)self->uniq_id);
 		
 		lFound = sl_find_stacktrack(self, p_skiplist, key, p_preds, p_succs, hp_preds, hp_succs);
 		
-		SL_TRACE_IN_HTM("[%d] skiplist_insert: find res=%d\n", (int)self->uniq_id, lFound);
+		SL_TRACE_IN_HTM("[%d] skiplist_insert_stacktrack: find res=%d\n", (int)self->uniq_id, lFound);
 		
 		if (lFound != -1) {
 			ST_SPLIT(self);
@@ -586,7 +586,7 @@ volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_
 			valid = !p_pred->marked && !p_succ->marked && p_pred->p_next[level] == p_succ;
 		}
 		
-		SL_TRACE_IN_HTM("[%d] skiplist_insert: valid=%d\n", (int)self->uniq_id, valid);
+		SL_TRACE_IN_HTM("[%d] skiplist_insert_stacktrack: valid=%d\n", (int)self->uniq_id, valid);
 		
 		if (valid) {
 			ST_SPLIT(self);
@@ -617,7 +617,7 @@ volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_
 	ST_split_finish(self);
 	ST_finish(self);
 	
-	SL_TRACE("[%d] skiplist_insert: finish\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_insert_stacktrack: finish\n", (int)self->uniq_id);
 	return ret;
 }
 
@@ -731,7 +731,7 @@ int skiplist_remove_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 	int topLevel = -1;
 	int ret = 0;
 
-	SL_TRACE("[%d] skiplist_remove_slow_path: start\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_remove_hp: start\n", (int)self->uniq_id);
 	
 	ST_init(self);
 	
@@ -807,7 +807,7 @@ int skiplist_remove_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 		ST_free(self, (int64_t *)p_victim);
 	}
 
-	SL_TRACE("[%d] SL_remove_slow_path: finish\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_remove_hp: finish\n", (int)self->uniq_id);
 	return ret;
 }
 
@@ -829,7 +829,7 @@ int skiplist_remove_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int ke
 	int ret = 0;
 	int64_t stack_start;
 
-	SL_TRACE("[%d] skiplist_remove: start [ key = %d ]\n", (int)self->uniq_id, key);
+	SL_TRACE("[%d] skiplist_remove_stacktrack: start [ key = %d ]\n", (int)self->uniq_id, key);
 	
 	ST_init(self);
 	
@@ -847,7 +847,7 @@ int skiplist_remove_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int ke
 			break;
 		}
 		
-		SL_TRACE_IN_HTM("[%d] skiplist_remove: find res = %d\n", (int)self->uniq_id, lFound);
+		SL_TRACE_IN_HTM("[%d] skiplist_remove_stacktrack: find res = %d\n", (int)self->uniq_id, lFound);
 		p_victim = p_succs[lFound];
 		
 		if ((!isMarked) ||
@@ -884,7 +884,7 @@ int skiplist_remove_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int ke
 				highestLocked = level;
 				valid = !p_pred->marked && p_pred->p_next[level] == p_victim;
 				if (!valid) {
-					SL_TRACE_IN_HTM("[%d] skiplist_remove: not valid [p_pred->marked = %d]\n", (int)self->uniq_id, p_pred->marked);
+					SL_TRACE_IN_HTM("[%d] skiplist_remove_stacktrack: not valid [p_pred->marked = %d]\n", (int)self->uniq_id, p_pred->marked);
 				}
 			}
 			
@@ -926,11 +926,11 @@ int skiplist_remove_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int ke
 	ST_finish(self);
 	
 	if (ret == 1) {
-		SL_TRACE("[%d] skiplist_remove: ST_FREE p_victim = %p\n", (int)self->uniq_id, p_victim);
+		SL_TRACE("[%d] skiplist_remove_stacktrack: ST_FREE p_victim = %p\n", (int)self->uniq_id, p_victim);
 		ST_free(self, (int64_t *)p_victim);
 	}
 
-	SL_TRACE("[%d] skiplist_remove: finish\n", (int)self->uniq_id);
+	SL_TRACE("[%d] skiplist_remove_stacktrack: finish\n", (int)self->uniq_id);
 	return ret;
 }
 
