@@ -1,0 +1,45 @@
+
+#ifndef HTM_H
+#define HTM_H 1
+
+/////////////////////////////////////////////////////////
+// INCLUDES
+/////////////////////////////////////////////////////////
+#include <immintrin.h>
+
+/////////////////////////////////////////////////////////
+// DEFINES
+/////////////////////////////////////////////////////////
+#define HTM_abort(abort_code) _xabort(abort_code)
+
+/////////////////////////////////////////////////////////
+// TYPES
+/////////////////////////////////////////////////////////
+typedef struct htm_thread_data {
+
+	unsigned int last_htm_abort;
+	
+	long n_xabort_explicit;
+	long n_xabort_retry;
+	long n_xabort_conflict;
+	long n_xabort_capacity;
+	long n_xabort_debug;
+	long n_xabort_nested;
+
+} htm_thread_data_t;
+
+/////////////////////////////////////////////////////////
+// EXTERNAL FUNCTIONS
+/////////////////////////////////////////////////////////
+void HTM_init();
+void HTM_finish();
+
+void HTM_thread_init(htm_thread_data_t *self);
+void HTM_thread_finish(htm_thread_data_t *self);
+
+int HTM_start(htm_thread_data_t *self);
+void HTM_commit();
+
+void HTM_print_stats();
+
+#endif // HTM_H
