@@ -4,11 +4,11 @@ STACK-TRACK 1.0 (12/19/2014)
 
 * General
 ---------
-This is a C implementation of the lock-free stack-track memory reclamation scheme for the lock-free skip-list.
+This is a C implementation of the lock-free stack-track memory reclamation scheme for the concurrent skip-list.
 
 The stack-track scheme is described in: http://people.csail.mit.edu/amatveev/StackTrack_EuroSys2014.pdf .
 
-This implementation allows to compare the stack-track scheme to the pure skip-list, that has no memory reclamation at all (leaks memory), and to the lock-free hazard pointers skip-list, that uses hazard pointers to protect shared references (by M.Michael http://dl.acm.org/citation.cfm?id=987595).
+This implementation allows to compare the stack-track scheme to the pure skip-list, that has no memory reclamation at all (leaks memory), and to the hazard pointers skip-list, that uses hazard pointers to protect shared references (by M.Michael http://dl.acm.org/citation.cfm?id=987595).
 
 * Code Maintainer
 -----------------
