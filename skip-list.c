@@ -192,6 +192,8 @@ static int sl_find_hp(st_thread_t *self,
 		}
 		
 	}
+	
+	ST_HP_reset(self);
 		
 	SL_TRACE("[%d] sl_find_hp: finish\n", (int)self->uniq_id);
 	return l_found;
@@ -262,6 +264,8 @@ static int sl_find_stacktrack(st_thread_t *self,
 	}
 	
 	ST_stack_del(self);
+	
+	ST_HP_reset(self);
 		
 	SL_TRACE("[%d] sl_find_stacktrack: finish\n", (int)self->uniq_id);
 	return l_found;
