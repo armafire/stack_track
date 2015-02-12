@@ -16,6 +16,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 // DEFINES
 ///////////////////////////////////////////////////////////////////////////////
+//#define ST_FREE_DUPLICATE_CHECK // undefine to disable
+  
 #define ST_TRACE(format, ...) //printf(format, __VA_ARGS__)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -245,6 +247,19 @@ void ST_split_segment_finish(st_thread_t *self) {
 	
 	self->split_index++;
 	
+	if (self->split_index > ST_MAX_SEGMENTS) {
+		printf("ERROR: too many segments [%d] > [%d]\n", self->split_index, ST_MAX_SEGMENTS);
+		abort();
+	}
+	
+}
+
+void ST_split_save(st_thread_t *self) {
+	self->split_index_saved = self->split_index;
+}
+
+void ST_split_restore(st_thread_t *self) {
+	self->split_index = self->split_index_saved;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -423,6 +438,14 @@ void ST_scan_and_free(st_thread_t *self) {
 
 void ST_free(st_thread_t *self, int64_t *ptr) {
 	
+#ifdef ST_FREE_DUPLICATE_CHECK
+	int i;
+	for (i = 0; i < self->free_list_size; i++) {
+		if (self->free_list[i].ptr_to_free == ptr) {
+			printf("ST_free: trying to free [%p] that is already in the free list.\n", ptr);
+		}
+	}
+#endif	
 	self->free_list[self->free_list_size].ptr_to_free = ptr;
 	self->free_list_size++;
 	

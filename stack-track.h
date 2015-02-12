@@ -68,6 +68,7 @@ typedef struct _st_thread_t {
 		
 	int op_index;
 	int split_index;
+	int split_index_saved;
 
 	char is_htm_active;
 	volatile long is_slow_path;
@@ -118,6 +119,8 @@ void ST_split_start(st_thread_t *self, int op_index);
 void ST_split_finish(st_thread_t *self);
 void ST_split_segment_start(st_thread_t *self);
 void ST_split_segment_finish(st_thread_t *self);
+void ST_split_save(st_thread_t *self);
+void ST_split_restore(st_thread_t *self);
 
 #define ST_SPLIT(self) \
 	self->cur_segment_len++; \
