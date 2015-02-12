@@ -7,6 +7,7 @@
 #include <string.h>
 #include <malloc.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #include "common.h"
 #include "atomics.h"
@@ -85,6 +86,7 @@ void ST_thread_finish(st_thread_t *self) {
 ///////////////////////////////////////////////////////////////////////////////
 void ST_init(st_thread_t *self) {
 	self->is_slow_path = 1;
+	self->n_next_stack = 0;
 	self->n_stacks = 0;
 	ST_HP_reset(self);
 	MEMBARSTLD();
@@ -92,6 +94,7 @@ void ST_init(st_thread_t *self) {
 
 void ST_finish(st_thread_t *self) {
 	self->n_stacks = 0;
+	self->n_next_stack = 0;
 	self->n_hp_records = 0;	
 	
 	self->stack_counter++;
@@ -107,13 +110,41 @@ void ST_finish(st_thread_t *self) {
 ///////////////////////////////////////////////////////////////////////////////
 // Stack Track - Stack Management
 ///////////////////////////////////////////////////////////////////////////////
-void ST_stack_add(st_thread_t *self, int64_t *p_stack_start, int64_t *p_stack_end) {
-	self->stacks[self->n_stacks].p_start = p_stack_start;
-	self->stacks[self->n_stacks].p_end = p_stack_end;
-	self->n_stacks++;
+void ST_stack_init(st_thread_t *self) {
+	self->stacks[self->n_next_stack].p_start = (int64_t *)0x0800000000000000;
+	self->stacks[self->n_next_stack].p_end = NULL;
+	
 }
+
+void ST_stack_add_range(st_thread_t *self, char *p_stack, int n_bytes) {
+	char *p_start = (char *)self->stacks[self->n_next_stack].p_start;
+	char *p_end = (char *)self->stacks[self->n_next_stack].p_end;
+	
+	//printf("ST_stack_add_range: [%ld] add [%p] [%d]\n", self->uniq_id, p_stack, n_bytes);
+	//printf("ST_stack_add_range: [%ld] cur [%p] [%p]\n", self->uniq_id, p_start, p_end);
+	if (p_stack < p_start) {
+		self->stacks[self->n_next_stack].p_start = (int64_t *)p_stack;
+	}
+	
+	if ((p_stack + n_bytes) > p_end) {
+		self->stacks[self->n_next_stack].p_end = (int64_t *)(p_stack + n_bytes);
+	}
+	
+	//printf("ST_stack_add_range: [%ld] new [%p] [%p]\n", self->uniq_id, 
+	//													self->stacks[self->n_next_stack].p_start,
+	//													self->stacks[self->n_next_stack].p_end);
+	
+}
+
+void ST_stack_publish(st_thread_t *self) {
+	self->n_stacks++;
+	self->n_next_stack = self->n_stacks;
+	MEMBARSTLD();
+}
+
 void ST_stack_del(st_thread_t *self) {
 	self->n_stacks--;
+	self->n_next_stack = self->n_stacks;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -174,6 +205,7 @@ void ST_split_segment_start(st_thread_t *self) {
 		if (n_htm_aborts > ST_SEGMENT_MAX_HTM_ABORTS) {
 			self->is_slow_path = 1;
 			self->stats.n_slow_path_segments++;
+			MEMBARSTLD();
 			return;
 		}
 		
@@ -222,9 +254,9 @@ void ST_HP_reset(st_thread_t *self) {
 	self->n_hp_records = 0;	
 }
 
-st_hp_record_t *ST_HP_alloc(st_thread_t *self) {	
+volatile st_hp_record_t *ST_HP_alloc(st_thread_t *self) {	
 	int i;
-	st_hp_record_t *p_hp;
+	volatile st_hp_record_t *p_hp;
 	
 	p_hp = &(self->hp_records[self->n_hp_records]);
 	self->n_hp_records++;
@@ -237,7 +269,7 @@ st_hp_record_t *ST_HP_alloc(st_thread_t *self) {
 	
 }
 
-void ST_HP_init(st_hp_record_t *p_hp, volatile int64_t **ptr_ptr) {
+void ST_HP_init(volatile st_hp_record_t *p_hp, volatile int64_t **ptr_ptr) {
 	
 	while (1) { 
 		p_hp->ptr = *ptr_ptr;
@@ -257,9 +289,12 @@ void ST_HP_init(st_hp_record_t *p_hp, volatile int64_t **ptr_ptr) {
 ///////////////////////////////////////////////////////////////////////////////
 int ST_scan_thread_hp_records(st_thread_t *self, int64_t *ptr_to_free) {
 	int i;
+	
+	//printf("ST_scan_thread_hp_records: [%d] scan %d hp pointers\n", self->uniq_id, self->n_hp_records - 1);
 		
 	for (i = self->n_hp_records - 1; i >= 0; i--) {
 		if (self->hp_records[i].ptr == ptr_to_free) {
+			//printf("found HP pointer!\n");
 			return 1;
 		}
 	}
@@ -278,10 +313,13 @@ int ST_scan_thread_stack(st_thread_t *self, int64_t *ptr_to_free) {
 		p_start = (unsigned char *)self->stacks[i].p_start;
 		p_end = (unsigned char *)self->stacks[i].p_end;
 		
+		//printf("stack scan: [%p] -> [%p]\n", p_start, p_end);
+		
 		for (p = p_start; p < p_end; p++) {
 			ptr_val = (*(int64_t **)p);
 			
 			if (ptr_val == ptr_to_free) {
+				//printf("pointer found! ");
 				return 1;
 			}	
 		}
@@ -348,6 +386,7 @@ void ST_scan_and_free(st_thread_t *self) {
 
 			if (ST_scan_thread((st_thread_t *)g_st_threads[th_id], self->free_list[i].ptr_to_free)) {
 				self->free_list[i].is_found = 1;
+				continue;
 			}
 			
 			if (local_split_counter != g_st_threads[th_id]->split_counter) {
@@ -367,7 +406,10 @@ void ST_scan_and_free(st_thread_t *self) {
 			continue;
 		}
 		
-		self->free_list[cur_index] = self->free_list[max_index-1];
+		free(self->free_list[cur_index].ptr_to_free);
+		
+		self->free_list[cur_index].is_found = self->free_list[max_index-1].is_found;
+		self->free_list[cur_index].ptr_to_free = self->free_list[max_index-1].ptr_to_free;
 		n_freed++;
 		max_index--;
 	}

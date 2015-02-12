@@ -140,16 +140,16 @@ static int sl_find_pure(st_thread_t *self,
 static int sl_find_hp(st_thread_t *self, 
 							 skiplist_t *p_skiplist, int key, 
 							 volatile sl_node_t **p_preds, volatile sl_node_t **p_succs, 
-							 st_hp_record_t **hp_preds, st_hp_record_t **hp_succs)
+							 volatile st_hp_record_t **hp_preds, volatile st_hp_record_t **hp_succs)
 {
 	int level;
 	int l_found = -1;
 	volatile sl_node_t *p_pred = NULL;
 	volatile sl_node_t *p_curr = NULL;
 	
-	st_hp_record_t *hp_pred = NULL;
-	st_hp_record_t *hp_curr = NULL;
-	st_hp_record_t *hp_temp = NULL;
+	volatile st_hp_record_t *hp_pred = NULL;
+	volatile st_hp_record_t *hp_curr = NULL;
+	volatile st_hp_record_t *hp_temp = NULL;
 			
 	SL_TRACE("[%d] sl_find_hp: start\n", (int)self->uniq_id);
 		
@@ -192,9 +192,7 @@ static int sl_find_hp(st_thread_t *self,
 		}
 		
 	}
-	
-	ST_HP_reset(self);
-		
+			
 	SL_TRACE("[%d] sl_find_hp: finish\n", (int)self->uniq_id);
 	return l_found;
 }
@@ -202,7 +200,7 @@ static int sl_find_hp(st_thread_t *self,
 static int sl_find_stacktrack(st_thread_t *self, 
 							   skiplist_t *p_skiplist, int key, 
 							   volatile sl_node_t **p_preds, volatile sl_node_t **p_succs, 
-							   st_hp_record_t **hp_preds, st_hp_record_t **hp_succs)
+							   volatile st_hp_record_t **hp_preds, volatile st_hp_record_t **hp_succs)
 {
 	int64_t stack_end;
 	int level;
@@ -211,13 +209,16 @@ static int sl_find_stacktrack(st_thread_t *self,
 	volatile sl_node_t *p_curr = NULL;
 	int64_t stack_start;
 	
-	st_hp_record_t *hp_pred = NULL;
-	st_hp_record_t *hp_curr = NULL;
-	st_hp_record_t *hp_temp = NULL;
+	volatile st_hp_record_t *hp_pred = NULL;
+	volatile st_hp_record_t *hp_curr = NULL;
+	volatile st_hp_record_t *hp_temp = NULL;
 			
 	SL_TRACE("[%d] sl_find_stacktrack: start\n", (int)self->uniq_id);
 	
-	ST_stack_add(self, &stack_start, &stack_end);
+	ST_stack_init(self);
+	ST_stack_add_range(self, (char *)&p_pred, sizeof(sl_node_t *));
+	ST_stack_add_range(self, (char *)&p_curr, sizeof(sl_node_t *));
+	ST_stack_publish(self);
 		
 	hp_pred = ST_HP_alloc(self);
 	hp_curr = ST_HP_alloc(self);
@@ -264,8 +265,6 @@ static int sl_find_stacktrack(st_thread_t *self,
 	}
 	
 	ST_stack_del(self);
-	
-	ST_HP_reset(self);
 		
 	SL_TRACE("[%d] sl_find_stacktrack: finish\n", (int)self->uniq_id);
 	return l_found;
@@ -309,8 +308,8 @@ int skiplist_contains_pure(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 }
 
 int skiplist_contains_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
-	st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
-	st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	int lFound;
@@ -331,8 +330,8 @@ int skiplist_contains_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 
 int skiplist_contains_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 	int64_t stack_end;
-	st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
-	st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	int lFound;
@@ -342,8 +341,11 @@ int skiplist_contains_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int 
 	SL_TRACE("[%d] skiplist_contains_stacktrack: start\n", (int)self->uniq_id);
 
 	ST_init(self);
-
-	ST_stack_add(self, &stack_start, &stack_end);
+	
+	ST_stack_init(self);
+	ST_stack_add_range(self, (char *)p_preds, sizeof(sl_node_t *) * SKIPLIST_MAX_LEVEL);
+	ST_stack_add_range(self, (char *)p_succs, sizeof(sl_node_t *) * SKIPLIST_MAX_LEVEL);
+	ST_stack_publish(self);
 	
 	ST_split_start(self, OP_ID_CONTAINS);
 	
@@ -351,6 +353,8 @@ int skiplist_contains_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int 
 	ret = (lFound != -1) && (p_succs[lFound]->fullyLinked) && (!p_succs[lFound]->marked);
     
 	ST_split_finish(self);
+	
+	ST_stack_del(self);
 	
 	ST_finish(self);	
 	
@@ -437,8 +441,8 @@ volatile sl_node_t *skiplist_insert_pure(st_thread_t *self, skiplist_t *p_skipli
 }
 
 volatile sl_node_t *skiplist_insert_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
-	st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
-	st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_node_found = NULL;
@@ -458,6 +462,8 @@ volatile sl_node_t *skiplist_insert_hp(st_thread_t *self, skiplist_t *p_skiplist
 	ST_init(self);
 
 	while (!done) {
+		
+		ST_HP_reset(self);
 		
 		SL_TRACE_IN_HTM("[%d] skiplist_insert_hp: find\n", (int)self->uniq_id);
 		
@@ -523,8 +529,8 @@ volatile sl_node_t *skiplist_insert_hp(st_thread_t *self, skiplist_t *p_skiplist
 
 volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 	int64_t stack_end;
-	st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
-	st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_node_found = NULL;
@@ -542,7 +548,14 @@ volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_
 	
 	ST_init(self);
 	
-	ST_stack_add(self, &stack_start, &stack_end);
+	ST_stack_init(self);
+	ST_stack_add_range(self, (char *)p_preds, sizeof(sl_node_t *) * SKIPLIST_MAX_LEVEL);
+	ST_stack_add_range(self, (char *)p_succs, sizeof(sl_node_t *) * SKIPLIST_MAX_LEVEL);
+	ST_stack_add_range(self, (char *)&p_node_found, sizeof(sl_node_t *));
+	ST_stack_add_range(self, (char *)&p_pred, sizeof(sl_node_t *));
+	ST_stack_add_range(self, (char *)&p_succ, sizeof(sl_node_t *));
+	ST_stack_add_range(self, (char *)&p_new_node, sizeof(sl_node_t *));
+	ST_stack_publish(self);
 	
 	topLevel = sl_randomLevel(self->p_seed);
 	
@@ -550,6 +563,8 @@ volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_
 	
 	while (!done) {
 		ST_SPLIT(self);
+		
+		ST_HP_reset(self);
 		
 		SL_TRACE_IN_HTM("[%d] skiplist_insert_stacktrack: find\n", (int)self->uniq_id);
 		
@@ -619,6 +634,9 @@ volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_
 	}
 	
 	ST_split_finish(self);
+
+	ST_stack_del(self);
+
 	ST_finish(self);
 	
 	SL_TRACE("[%d] skiplist_insert_stacktrack: finish\n", (int)self->uniq_id);
@@ -720,8 +738,8 @@ int skiplist_remove_pure(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 }
 
 int skiplist_remove_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
-	st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
-	st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_victim = NULL;
@@ -740,6 +758,8 @@ int skiplist_remove_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 	ST_init(self);
 	
 	while (1) {
+		
+		ST_HP_reset(self);
 		
 		lFound = sl_find_hp(self, p_skiplist, key, p_preds, p_succs, hp_preds, hp_succs);
 		
@@ -817,8 +837,8 @@ int skiplist_remove_hp(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 
 int skiplist_remove_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 	int64_t stack_end;
-	st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
-	st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_preds[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile st_hp_record_t *hp_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_victim = NULL;
@@ -837,12 +857,19 @@ int skiplist_remove_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int ke
 	
 	ST_init(self);
 	
-	ST_stack_add(self, &stack_start, &stack_end);
+	ST_stack_init(self);
+	ST_stack_add_range(self, (char *)p_preds, sizeof(sl_node_t *) * SKIPLIST_MAX_LEVEL);
+	ST_stack_add_range(self, (char *)p_succs, sizeof(sl_node_t *) * SKIPLIST_MAX_LEVEL);
+	ST_stack_add_range(self, (char *)&p_victim, sizeof(sl_node_t *));
+	ST_stack_add_range(self, (char *)&p_pred, sizeof(sl_node_t *));
+	ST_stack_publish(self);
 	
 	ST_split_start(self, OP_ID_REMOVE);
 	
 	while (1) {
 		ST_SPLIT(self);
+		
+		ST_HP_reset(self);
 		
 		lFound = sl_find_stacktrack(self, p_skiplist, key, p_preds, p_succs, hp_preds, hp_succs);
 		
@@ -927,6 +954,9 @@ int skiplist_remove_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int ke
 	}
 
 	ST_split_finish(self);
+	
+	ST_stack_del(self);
+	
 	ST_finish(self);
 	
 	if (ret == 1) {
