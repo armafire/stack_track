@@ -1,7 +1,9 @@
 
 #include <assert.h>
+#include <forkscan.h>
 #include <getopt.h>
 #include <limits.h>
+#include <malloc.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -302,6 +304,11 @@ int main(int argc, char **argv)
 	int update = DEFAULT_UPDATE;
 	int alternate = 1;
 	sigset_t block_set;
+
+	// By default, Forkscan uses its own allocator.  For consistency
+	// across benchmarks, configure it to use what everyone else is
+	// using.
+	forkscan_set_allocator(malloc, free, malloc_usable_size);
 
 	while(1) {
 		i = 0;
