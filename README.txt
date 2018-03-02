@@ -17,6 +17,9 @@ Email: amatveev@csail.mit.edu
 
 * Compilation
 -------------
+Requires Forkscan to be installed (follow the build, install procedure):
+https://github.com/Willtor/forkscan
+
 Execute "make"
 
 * Execution Options
@@ -27,6 +30,7 @@ Execute "make"
         0 - Pure: no memory reclamation
         1 - Hazard Pointers
         2 - Stack Track
+        3 - Forkscan
         (default=(0))
   -l, --max-segment-length
         Maximum segment length (default=(50))
@@ -60,5 +64,3 @@ Execute "make"
 1. The malloc/free library should be HTM friendly. A good example is "tc-malloc" from Google Perf Tools library (https://code.google.com/p/gperftools/)
 
 2. To bind threads to specific cores use the "taskset" linux command. For example, on 8-core Intel Haswell processor, the command "taskset -c 0-7 prog arg1 arg2 ..." allows to avoid the negative HyperThreading HTM effects for 8-thread executions; It binds each thread to another core, so no 2 threads execute on the same core.
-
-
