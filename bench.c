@@ -21,6 +21,7 @@
 #define ALG_TYPE_PURE                   (0)
 #define ALG_TYPE_HAZARD_POINTERS        (1)
 #define ALG_TYPE_STACK_TRACK            (2)
+#define ALG_TYPE_FORKSCAN               (3)
 
 #define DEFAULT_ALG_TYPE			    (ALG_TYPE_PURE)
 #define DEFAULT_MAX_SEGMENT_LEN         (50)
@@ -136,8 +137,10 @@ int set_contains(thread_data_t *p_td, int key) {
 		res = skiplist_contains_hp(p_td->p_st, p_td->p_set, key);
 	} else if (p_td->alg_type == ALG_TYPE_STACK_TRACK) {
 		res = skiplist_contains_stacktrack(p_td->p_st, p_td->p_set, key);
+	} else if (p_td->alg_type == ALG_TYPE_FORKSCAN) {
+		res = skiplist_contains_forkscan(p_td->p_st, p_td->p_set, key);
 	}
-	
+
 	return res;
 }
 
@@ -150,12 +153,14 @@ int set_add(thread_data_t *p_td, int key) {
 		p_node = skiplist_insert_hp(p_td->p_st, p_td->p_set, key);
 	} else if (p_td->alg_type == ALG_TYPE_STACK_TRACK) {
 		p_node = skiplist_insert_stacktrack(p_td->p_st, p_td->p_set, key);
+	} else if (p_td->alg_type == ALG_TYPE_FORKSCAN) {
+		p_node = skiplist_insert_forkscan(p_td->p_st, p_td->p_set, key);
 	}
-	
+
 	if (p_node != NULL) {
 		return 1;
 	} 
-	
+
 	return 0;	
 }
 
@@ -168,8 +173,10 @@ int set_remove(thread_data_t *p_td, int key) {
 		res = skiplist_remove_hp(p_td->p_st, p_td->p_set, key);
 	} else if (p_td->alg_type == ALG_TYPE_STACK_TRACK) {
 		res = skiplist_remove_stacktrack(p_td->p_st, p_td->p_set, key);
+	} else if (p_td->alg_type == ALG_TYPE_FORKSCAN) {
+		res = skiplist_remove_forkscan(p_td->p_st, p_td->p_set, key);
 	}
-	
+
 	return res;
 }
 
@@ -283,7 +290,7 @@ int main(int argc, char **argv)
 	pthread_attr_t attr;
 	barrier_t barrier;
 	struct timeval start, end;
-	struct timespec timeout;
+	struct timespec timeout, remaining;
 	int alg_type = DEFAULT_ALG_TYPE;
 	int max_segment_len = DEFAULT_MAX_SEGMENT_LEN;
 	int max_free_list = DEFAULT_MAX_FREE_LIST;
@@ -324,6 +331,7 @@ int main(int argc, char **argv)
 					"        0 - Pure: no memory reclamation\n"
 					"        1 - Hazard Pointers\n"
 					"        2 - Stack Track\n"
+					"        3 - Forkscan\n"
 					"  -l, --max-segment-length\n"
 					"        Maximum segment length\n"
 					"  -f, --free-batch-size\n"
@@ -351,8 +359,9 @@ int main(int argc, char **argv)
 				alg_type = atoi(optarg);
 				if ((alg_type != ALG_TYPE_PURE) && 
 				    (alg_type != ALG_TYPE_HAZARD_POINTERS) &&
-				    (alg_type != ALG_TYPE_STACK_TRACK)) {
-					printf("ERROR: protocol type must be 0 (pure) or 1 (hazard pointers) or 2 (stack track).\n");
+				    (alg_type != ALG_TYPE_STACK_TRACK) &&
+				    (alg_type != ALG_TYPE_FORKSCAN)) {
+					printf("ERROR: protocol type must be 0 (pure) or 1 (hazard pointers) or 2 (stack track) or 3 (forkscan).\n");
 					exit(1);
 				}
 				break;	
@@ -404,6 +413,8 @@ int main(int argc, char **argv)
 		printf("Set type           : skip-list [** hazard pointers **]\n");
 	} else if (alg_type == ALG_TYPE_STACK_TRACK) {
 		printf("Set type           : skip-list [** stack-track **]\n");
+	} else if (alg_type == ALG_TYPE_FORKSCAN) {
+		printf("Set type           : skip-list [** forkscan **]\n");
 	} else {
 		abort();
 	}
@@ -493,7 +504,9 @@ int main(int argc, char **argv)
 	printf("STARTING...\n");
 	gettimeofday(&start, NULL);
 	if (duration > 0) {
-		nanosleep(&timeout, NULL);
+		while (-1 == nanosleep(&timeout, &remaining)) {
+			timeout = remaining;
+		}
 	} else {
 		sigemptyset(&block_set);
 		sigsuspend(&block_set);
