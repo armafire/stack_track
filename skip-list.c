@@ -366,6 +366,7 @@ skiplist_t *skiplist_init() {
 	
 	for (i = 0; i < SKIPLIST_MAX_LEVEL; i++) {
 		p_skiplist->p_head->p_next[i] = p_skiplist->p_tail;
+		p_skiplist->p_tail->p_next[i] = NULL;
 	}
 	
 	return p_skiplist;
