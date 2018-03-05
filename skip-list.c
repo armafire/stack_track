@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <malloc.h>
+#include <forkscan.h>
 
 #include "common.h"
 #include "atomics.h"
@@ -365,6 +366,7 @@ skiplist_t *skiplist_init() {
 	
 	for (i = 0; i < SKIPLIST_MAX_LEVEL; i++) {
 		p_skiplist->p_head->p_next[i] = p_skiplist->p_tail;
+		p_skiplist->p_tail->p_next[i] = NULL;
 	}
 	
 	return p_skiplist;
@@ -435,6 +437,21 @@ int skiplist_contains_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int 
 	ST_finish(self);	
 	
 	SL_TRACE("[%d] skiplist_contains_stacktrack: finish\n", (int)self->uniq_id);
+	return ret;
+}
+
+int skiplist_contains_forkscan(st_thread_t *self, skiplist_t *p_skiplist, int key) {
+	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
+	int lFound;
+	int ret;
+
+	SL_TRACE("[%d] skiplist_contains_forkscan: start\n", (int)self->uniq_id);
+
+	lFound = sl_find_pure(self, p_skiplist, key, p_preds, p_succs);
+	ret = (lFound != -1) && (p_succs[lFound]->fullyLinked) && (!p_succs[lFound]->marked);
+
+	SL_TRACE("[%d] skiplist_contains_forkscan: finish\n", (int)self->uniq_id);
 	return ret;
 }
 
@@ -717,6 +734,84 @@ volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_
 	return ret;
 }
 
+volatile sl_node_t *skiplist_insert_forkscan(st_thread_t *self, skiplist_t *p_skiplist, int key) {
+	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile sl_node_t *p_node_found = NULL;
+	volatile sl_node_t *p_pred = NULL;
+	volatile sl_node_t *p_succ = NULL;
+	volatile sl_node_t *p_new_node = NULL;
+	volatile sl_node_t *ret = NULL;
+	int level;
+	int topLevel = -1;
+	int lFound = -1;
+	int done = 0;
+
+	SL_TRACE("[%d] skiplist_insert_forkscan: start [ key = %d ]\n", (int)self->uniq_id, key);
+
+	topLevel = sl_randomLevel(self->p_seed);
+
+	while (!done) {
+		SL_TRACE_IN_HTM("[%d] skiplist_insert_forkscan: find\n", (int)self->uniq_id);
+
+		lFound = sl_find_pure(self, p_skiplist, key, p_preds, p_succs);
+
+		SL_TRACE_IN_HTM("[%d] skiplist_insert_forkscan: find res=%d\n", (int)self->uniq_id, lFound);
+
+		if (lFound != -1) {
+			p_node_found = p_succs[lFound];
+			if (!(p_node_found->marked)) {
+				while (!(p_node_found->fullyLinked)) { CPU_RELAX; } // keep spinning
+				return ret;
+			}
+			continue; // try again
+		}
+
+		int highestLocked = -1;
+
+		int valid = 1;
+		for (level = 0; valid && (level <= topLevel); level++)
+		{
+			p_pred = p_preds[level];
+			p_succ = p_succs[level];
+			if (level == 0 || p_preds[level] != p_preds[level - 1]) {
+				// don't try to lock same node twice
+				sl_node_lock(self, p_pred);
+			}
+			highestLocked = level;
+
+			// make sure nothing has changed in between
+			valid = !p_pred->marked && !p_succ->marked && p_pred->p_next[level] == p_succ;
+		}
+
+		SL_TRACE_IN_HTM("[%d] skiplist_insert_forkscan: valid=%d\n", (int)self->uniq_id, valid);
+
+		if (valid) {
+			p_new_node = forkscan_malloc(sizeof(sl_node_t));
+			sl_node_init(self, p_new_node, key, topLevel);
+			ret = p_new_node;
+			p_new_node->topLevel = topLevel;
+			for (level = 0; level <= topLevel; level++) {
+				p_new_node->p_next[level] = p_succs[level];
+				p_preds[level]->p_next[level] = p_new_node;
+			}
+			p_new_node->fullyLinked = 1;
+			done = 1;
+		}
+
+		// unlock everything here
+		for (level = 0; level <= highestLocked; level++) {
+			if (level == 0 || p_preds[level] != p_preds[level - 1]) {
+				// don't try to unlock the same node twice
+				sl_node_unlock(self, p_preds[level]);
+			}
+		}
+	}
+
+	SL_TRACE("[%d] skiplist_insert_forkscan: finish\n", (int)self->uniq_id);
+	return ret;
+}
+
 int skiplist_remove_pure(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
 	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
@@ -745,7 +840,7 @@ int skiplist_remove_pure(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 		p_victim = p_succs[lFound];
 		
 		if ((!isMarked) ||
-			(p_victim->fullyLinked && p_victim->topLevel == lFound && !p_victim->marked)) 
+			(p_victim->fullyLinked && p_victim->topLevel == lFound && !p_victim->marked))
 		{
 			if (!isMarked) {
 				topLevel = p_victim->topLevel;
@@ -786,12 +881,12 @@ int skiplist_remove_pure(st_thread_t *self, skiplist_t *p_skiplist, int key) {
 				}
 				sl_node_unlock(self, p_victim);
 				ret = 1;
-				
+
 			} else {
 				p_victim->marked = 0;
 				isMarked = 0;
 				sl_node_unlock(self, p_victim);
-				
+
 			}
 			
 			// unlock mutexes
@@ -1058,6 +1153,102 @@ int skiplist_size(skiplist_t *p_skiplist) {
 	n_nodes -= 1;
 
 	return n_nodes;
+}
+
+int skiplist_remove_forkscan(st_thread_t *self, skiplist_t *p_skiplist, int key) {
+	volatile sl_node_t *p_preds[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile sl_node_t *p_succs[SKIPLIST_MAX_LEVEL] = {0,};
+	volatile sl_node_t *p_victim = NULL;
+	volatile sl_node_t *p_pred = NULL;
+	int i;
+	int level;
+	int lFound;
+	int highestLocked;
+	int valid;
+	int isMarked = 0;
+	int topLevel = -1;
+	int ret = 0;
+
+	SL_TRACE("[%d] skiplist_remove_forkscan: start [ key = %d ]\n", (int)self->uniq_id, key);
+
+	while (1) {
+
+		lFound = sl_find_pure(self, p_skiplist, key, p_preds, p_succs);
+
+		if (lFound == -1) {
+			break;
+		}
+
+		SL_TRACE_IN_HTM("[%d] skiplist_remove_forkscan: find res = %d\n", (int)self->uniq_id, lFound);
+		p_victim = p_succs[lFound];
+
+		if ((!isMarked) ||
+			(p_victim->fullyLinked && p_victim->topLevel == lFound && !p_victim->marked))
+		{
+			if (!isMarked) {
+				topLevel = p_victim->topLevel;
+				sl_node_lock(self, p_victim);
+				if (p_victim->marked) {
+					sl_node_unlock(self, p_victim);
+					ret = 0;
+					break;
+				}
+
+				p_victim->marked = 1;
+				isMarked = 1;
+
+			}
+
+			highestLocked = -1;
+			valid = 1;
+
+			for (level = 0; valid && (level <= topLevel); level++)
+			{
+				p_pred = p_preds[level];
+				if (level == 0 || p_preds[level] != p_preds[level - 1]) { // don't do twice
+					sl_node_lock(self, p_pred);
+				}
+				highestLocked = level;
+				valid = !p_pred->marked && p_pred->p_next[level] == p_victim;
+				if (!valid) {
+					SL_TRACE_IN_HTM("[%d] skiplist_remove_forkscan: not valid [p_pred->marked = %d]\n", (int)self->uniq_id, p_pred->marked);
+				}
+			}
+
+
+
+			if (valid) {
+				for (level = topLevel; level >= 0; level--) {
+					p_preds[level]->p_next[level] = p_victim->p_next[level];
+					p_victim->p_next[level] = NULL;
+				}
+				sl_node_unlock(self, p_victim);
+				forkscan_retire((void*)p_victim);
+				ret = 1;
+
+			} else {
+				p_victim->marked = 0;
+				isMarked = 0;
+				sl_node_unlock(self, p_victim);
+
+			}
+
+			// unlock mutexes
+			for (i = 0; i <= highestLocked; i++) {
+				if (i == 0 || p_preds[i] != p_preds[i - 1]) {
+					sl_node_unlock(self, p_preds[i]);
+				}
+			}
+
+			if (valid) {
+				break;
+			}
+		}
+
+	}
+
+	SL_TRACE("[%d] skiplist_remove_forkscan: finish\n", (int)self->uniq_id);
+	return ret;
 }
 
 void skiplist_print_stats(skiplist_t *p_skiplist) {

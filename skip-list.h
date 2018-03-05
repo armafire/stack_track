@@ -42,14 +42,17 @@ skiplist_t *skiplist_init();
 int skiplist_contains_pure(st_thread_t *self, skiplist_t *p_skiplist, int key);
 int skiplist_contains_hp(st_thread_t *self, skiplist_t *p_skiplist, int key);
 int skiplist_contains_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int key);
+int skiplist_contains_forkscan(st_thread_t *self, skiplist_t *p_skiplist, int key);
 
 volatile sl_node_t *skiplist_insert_pure(st_thread_t *self, skiplist_t *p_skiplist, int key);
 volatile sl_node_t *skiplist_insert_hp(st_thread_t *self, skiplist_t *p_skiplist, int key);
 volatile sl_node_t *skiplist_insert_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int key);
+volatile sl_node_t *skiplist_insert_forkscan(st_thread_t *self, skiplist_t *p_skiplist, int key);
 
 int skiplist_remove_pure(st_thread_t *self, skiplist_t *p_skiplist, int key);
 int skiplist_remove_hp(st_thread_t *self, skiplist_t *p_skiplist, int key);
 int skiplist_remove_stacktrack(st_thread_t *self, skiplist_t *p_skiplist, int key);
+int skiplist_remove_forkscan(st_thread_t *self, skiplist_t *p_skiplist, int key);
 
 int skiplist_size(skiplist_t *p_skiplist);
 void skiplist_print_stats(skiplist_t *p_skiplist);

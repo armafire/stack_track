@@ -11,7 +11,7 @@ CFLAGS += -g -mrtm -O3
 CFLAGS += -Winline --param inline-unit-growth=1000 
 
 LDFLAGS += -L$(URCUDIR)/lib
-LDFLAGS += -lpthread
+LDFLAGS += -lforkscan -lpthread
 
 BINS = bench-skiplist 
 
